@@ -1,43 +1,91 @@
-local RS = game:GetService('ReplicatedStorage') -- Get the ReplicatedStorage service
-local Events = RS:WaitForChild("Events") -- Wait for the "Events" folder in ReplicatedStorage
-local TweenService = game:GetService("TweenService")
+-- Services and events
+local RS = game:GetService('ReplicatedStorage') 
+local Events = RS:WaitForChild("Events")  -- Waits for the "Events" folder
+local TweenService = game:GetService("TweenService")  -- Service for animations
 
+-- Slam event
 local Slam = Events:WaitForChild("Slam")
 
-local DashRightEvent = Events:WaitForChild("DashRight") -- Wait for the "DashRight" event
-local DashLeftEvent = Events:WaitForChild("DashLeft") -- Wait for the "DashLeft" event
-local DashForwardEvent = Events:WaitForChild("DashForward") -- Wait for the "DashForward" event
-local DashBackwardEvent = Events:WaitForChild("DashBackward") -- Wait for the "DashBackward" event
-local DashUpwardEvent = Events:WaitForChild("DashUpward") -- Wait for the "DashUpward" event (new event for "E")
+-- Dash events for different keys
+local DashEvents = {
+	D = Events:WaitForChild("DashRight"),
+	A = Events:WaitForChild("DashLeft"),
+	W = Events:WaitForChild("DashForward"),
+	S = Events:WaitForChild("DashBackward"),
+	E = Events:WaitForChild("DashUpward")
+}
 
-local pressedDCount = 0 -- Initialize press count for "D"
-local timeBetweenDpress = 0 -- Initialize time between "D" presses
-local cooldownD = 2 -- Set cooldown duration for "D" in seconds
-local canDashD = true -- Initialize whether the player can dash to the right
+-- Configuration for dash actions
+local DashConfig = {
+	D = {count = 0, timeBetweenPress = 0, cooldown = 2, canDash = true, animName = "DashRight", rotate = Vector3.new(0, 0, 0)},
+	A = {count = 0, timeBetweenPress = 0, cooldown = 2, canDash = true, animName = "DashLeft", rotate = Vector3.new(-90, 90, 90)},
+	W = {count = 0, timeBetweenPress = 0, cooldown = 2, canDash = true, animName = "DashForward", rotate = Vector3.new(0, 90, 0)},
+	S = {count = 0, timeBetweenPress = 0, cooldown = 2, canDash = true, animName = "DashBackward", rotate = Vector3.new(0, -90, 0)},
+	E = {count = 0, timeBetweenPress = 0, cooldown = 2, canDash = true, animName = "DashUpward", rotate = Vector3.new(0, 90, 90)}
+}
 
-local pressedACount = 0 -- Initialize press count for "A"
-local timeBetweenApress = 0 -- Initialize time between "A" presses
-local cooldownA = 2 -- Set cooldown duration for "A" in seconds
-local canDashA = true -- Initialize whether the player can dash to the left
+-- Function to handle dashing
+local function handleDash(key, player)
+	local char = player.Character
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local config = DashConfig[key]
+	local anim = char.Humanoid:LoadAnimation(script[config.animName])
 
-local pressedSCount = 0 -- Initialize press count for "S"
-local timeBetweenSpress = 0 -- Initialize time between "S" presses
-local cooldownS = 2 -- Set cooldown duration for "S" in seconds
-local canDashS = true -- Initialize whether the player can dash backward
+	-- Determine direction based on key pressed
+	local direction
+	if key == "D" then
+		direction = hrp.CFrame.RightVector
+	elseif key == "A" then
+		direction = -hrp.CFrame.RightVector
+	elseif key == "W" then
+		direction = hrp.CFrame.LookVector
+	elseif key == "S" then
+		direction = -hrp.CFrame.LookVector
+	elseif key == "E" then
+		direction = Vector3.new(0, 2.5, 0)
+	end
 
-local pressedWCount = 0 -- Initialize press count for "W"
-local timeBetweenWpress = 0 -- Initialize time between "W" presses
-local cooldownW = 2 -- Set cooldown duration for "W" in seconds
-local canDashW = true -- Initialize whether the player can dash forward
+	if config.canDash then
+		config.count = config.count + 1
+		if config.count == 2 then
+			if config.timeBetweenPress < 0.3 then
+				config.count = 0
+				anim:Play()
+				local dust = RS:WaitForChild("Dust"):Clone()
+				dust.Parent = workspace.Debris
+				dust.Position = hrp.Position
+				dust.Orientation = hrp.Orientation + config.rotate
+				TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = dust.Size * 2}):Play()
 
-local pressedSpaceCount = 0 -- Initialize press count for "E" 
-local timeBetweenSpacepress = 0 -- Initialize time between "E" presses
-local cooldownSpace = 2 -- Set cooldown duration for "E" in seconds 
-local canDashSpace = true -- Initialize whether the player can dash upward
-local Slamdebounce = false
+				config.canDash = false
+				hrp.CFrame = hrp.CFrame + direction * 10
+				task.wait(config.cooldown)
+				config.canDash = true
 
+				-- Clean up dust
+				repeat
+					if dust.Transparency == 1 then
+						dust:Destroy()
+					end
+					task.wait(0.1)
+				until not dust
+			else
+				config.count = 1
+			end
+		end
+		config.timeBetweenPress = 0
+	end
+end
 
-function SlamEffect(HRP)
+-- Connect dash events to handleDash function
+for key, event in pairs(DashEvents) do
+	event.OnServerEvent:Connect(function(player)
+		handleDash(key, player)
+	end)
+end
+
+-- Function to handle slam effect
+local function SlamEffect(HRP)
 	local RayParams = RaycastParams.new()
 	RayParams.FilterDescendantsInstances = {workspace.Debris}
 	RayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -45,7 +93,6 @@ function SlamEffect(HRP)
 	local Angle = 0
 	local TotalPosition = Vector3.new(0, 0, 0)  -- Variable to accumulate positions of all parts
 	local PartCount = 0  -- Counter for the number of parts
-	
 	for i = 1, 30 do
 		local Size = math.random(2, 3) -- Randomize size
 		local Part = Instance.new("Part") -- Create a new part
@@ -53,120 +100,122 @@ function SlamEffect(HRP)
 		Part.Size = Vector3.new(1, 1, 1)
 		Part.CFrame = HRP.CFrame * CFrame.fromEulerAnglesXYZ(0, math.rad(Angle), 0) * CFrame.new(10, 5, 0) -- Set the CFrame
 
-		game.Debris:AddItem(Part, 5) -- Lifetime
-		
-		-- Cast a ray straight down from the feet to find the floor
-		local GroundRay = workspace:Raycast(HRP.Parent.LeftFoot.Position, Vector3.new(0, -500, 0), RayParams)
-		
-		if GroundRay then
-			-- Update the hit position if this raycast hits something
-			if not HitPosition then
-				HitPosition = GroundRay.Position
-			end
-		end
+			game.Debris:AddItem(Part, 5) -- Lifetime
 
-		-- Cast a ray downwards from the part's position
-		local RayCast = workspace:Raycast(Part.CFrame.Position, Part.CFrame.UpVector * -500, RayParams)
+			-- Cast a ray straight down from the feet to find the floor
+			local GroundRay = workspace:Raycast(HRP.Parent.LeftFoot.Position, Vector3.new(0, -500, 0), RayParams)
 
-		if RayCast then
-
-			-- Ground hit, adjust part position based on hit position
-			Part.Position = RayCast.Position + Vector3.new(0, -5, 0)
-			Part.CanQuery = false
-			Part.Material = RayCast.Instance.Material
-			Part.Color = RayCast.Instance.Color
-			Part.CanCollide = false
-		end
-
-		TotalPosition += Part.Position  -- Accumulate the position of the current part
-		PartCount += 1  -- Increment the part counter
-
-		Part.Size = Vector3.new(Size, Size, Size)
-		Part.Orientation = Vector3.new(math.random(-180, 180), math.random(-180, 180), math.random(-180, 180))
-		Part.Parent = workspace.Debris
-
-		local tween = TweenService:Create(Part, TweenInfo.new(0.25, Enum.EasingStyle.Bounce, Enum.EasingDirection.InOut), {Position = Part.Position + Vector3.new(0, 5, 0)}):Play()
-		delay(4, function()
-			local Tween = TweenService:Create(Part, TweenInfo.new(1), {Transparency = 1, Position = Part.Position + Vector3.new(0, -5, 0)}):Play()
-		end)
-
-		Angle += 25
-	end
-
-	if HitPosition then
-		local CenterPosition = TotalPosition / PartCount  -- Calculate the average position (center of the circle)
-
-		local char = HRP.Parent -- Get the character
-		local anim = char.Humanoid:LoadAnimation(script.Slam) -- Load the animation
-		
-		char:FindFirstChild("Humanoid").WalkSpeed = 0
-		char:FindFirstChild("Humanoid").JumpHeight = 0
-		-- Teleport the player just above the hit position
-		HRP.CFrame = CFrame.new(CenterPosition.X, HitPosition.Y + HRP.Size.Y / 2 + 10, CenterPosition.Z)
-		anim:Play()
-		wait(0.25)
-
-		local dust = RS:WaitForChild("SlamDust"):Clone()
-		dust.Parent = workspace.Debris
-		dust.CFrame = CFrame.new(CenterPosition.X, HitPosition.Y + HRP.Size.Y / 2, CenterPosition.Z)
-		dust.Orientation = Vector3.new(0, 90, 90)
-
-		local tween = TweenService:Create(dust, TweenInfo.new(0.3), {Transparency = 1, Size = Vector3.new(0.833, 26.12, 26.12)}):Play()
-		local db = false
-
-		dust.Touched:Connect(function(hit)
-			if db == false then
-				db = true
-			local hitCharacter = hit.Parent
-			if hitCharacter:FindFirstChild("Humanoid") and hitCharacter ~= char then
-				hitCharacter.Humanoid:TakeDamage(25)
-
-				local Speed = 40
-				local Force = 80000
-
-				local TotalForce = Force
-
-				local KnockBack = Instance.new("BodyVelocity")
-				KnockBack.Parent = hitCharacter:FindFirstChild("HumanoidRootPart") -- part is the target of the knockback
-
-				KnockBack.MaxForce = Vector3.new(TotalForce, TotalForce, TotalForce)
-
-				-- Calculate direction from the hit position to the center of the slam
-				local direction = (hit.Position - CenterPosition).Unit
-				KnockBack.Velocity = direction * Speed
-
-				task.wait(0.3)
-					KnockBack:Destroy()
-					db = false
+			if GroundRay then
+				-- Update the hit position if this raycast hits something
+				if not HitPosition then
+					HitPosition = GroundRay.Position
 				end
 			end
-		end)
-		anim.Ended:Wait()
-		char:FindFirstChild("Humanoid").WalkSpeed = 16
-		char:FindFirstChild("Humanoid").JumpHeight = 7.2
 
-		repeat
-			if dust.Transparency == 1 then
-				dust:Destroy()
+			-- Cast a ray downwards from the part's position
+			local RayCast = workspace:Raycast(Part.CFrame.Position, Part.CFrame.UpVector * -500, RayParams)
+
+			if RayCast then
+
+				-- Ground hit, adjust part position based on hit position
+				Part.Position = RayCast.Position
+				Part.Position -= Vector3.new(0, RayCast.Position.Y, 0)
+				Part.Position += Vector3.new(0, HitPosition.Y - 5, 0)
+				Part.CanQuery = false
+				Part.Material = RayCast.Instance.Material
+				Part.Color = RayCast.Instance.Color
+				Part.CanCollide = false
 			end
-			task.wait(0.1)
-		until not dust
-	end
+
+			TotalPosition += Part.Position  -- Accumulate the position of the current part
+			PartCount += 1  -- Increment the part counter
+
+			Part.Size = Vector3.new(Size, Size, Size)
+			Part.Orientation = Vector3.new(math.random(-180, 180), math.random(-180, 180), math.random(-180, 180))
+			Part.Parent = workspace.Debris
+
+			local tween = TweenService:Create(Part, TweenInfo.new(0.25, Enum.EasingStyle.Bounce, Enum.EasingDirection.InOut), {Position = Part.Position + Vector3.new(0, 5, 0)}):Play()
+			delay(4, function()
+				local Tween = TweenService:Create(Part, TweenInfo.new(1), {Transparency = 1, Position = Part.Position + Vector3.new(0, -5, 0)}):Play()
+			end)
+
+			Angle += 25
+		end
+
+		if HitPosition then
+			local CenterPosition = TotalPosition / PartCount  -- Calculate the average position (center of the circle)
+
+			local char = HRP.Parent -- Get the character
+			local anim = char.Humanoid:LoadAnimation(script.Slam) -- Load the animation
+
+			char:FindFirstChild("Humanoid").WalkSpeed = 0
+			char:FindFirstChild("Humanoid").JumpHeight = 0
+			-- Teleport the player just above the hit position
+			HRP.CFrame = CFrame.new(CenterPosition.X, HitPosition.Y + HRP.Size.Y / 2 + 10, CenterPosition.Z)
+			anim:Play()
+			wait(0.25)
+
+			local dust = RS:WaitForChild("SlamDust"):Clone()
+			dust.Parent = workspace.Debris
+			dust.CFrame = CFrame.new(CenterPosition.X, HitPosition.Y + HRP.Size.Y / 2, CenterPosition.Z)
+			dust.Orientation = Vector3.new(0, 90, 90)
+
+			local tween = TweenService:Create(dust, TweenInfo.new(0.3), {Transparency = 1, Size = Vector3.new(0.833, 26.12, 26.12)}):Play()
+			local db = false
+
+			dust.Touched:Connect(function(hit)
+				if db == false then
+					db = true
+				local hitCharacter = hit.Parent
+				if hitCharacter:FindFirstChild("Humanoid") and hitCharacter ~= char then
+					hitCharacter.Humanoid:TakeDamage(25)
+
+					local Speed = 40
+					local Force = 80000
+
+					local TotalForce = Force
+
+					local KnockBack = Instance.new("BodyVelocity")
+					KnockBack.Parent = hitCharacter:FindFirstChild("HumanoidRootPart") -- part is the target of the knockback
+
+					KnockBack.MaxForce = Vector3.new(TotalForce, TotalForce, TotalForce)
+
+					-- Calculate direction from the hit position to the center of the slam
+					local direction = (hit.Position - CenterPosition).Unit
+					KnockBack.Velocity = direction * Speed
+
+					task.wait(0.3)
+						KnockBack:Destroy()
+						db = false
+					end
+				end
+			end)
+			anim.Ended:Wait()
+			char:FindFirstChild("Humanoid").WalkSpeed = 16
+			char:FindFirstChild("Humanoid").JumpHeight = 7.2
+
+			repeat
+				if dust.Transparency == 1 then
+					dust:Destroy()
+				end
+				task.wait(0.1)
+			until not dust
+		end
 end
 
-
+-- Connect slam event to SlamEffect function
 Slam.OnServerEvent:Connect(function(player)
 	local char = player.Character
 	local HRP = char.HumanoidRootPart
-	
+
+	local char = player.Character
+	local HRP = char.HumanoidRootPart
 	local debounce = false
 	-- Raycast downward to check the distance from the ground
 	local RayParams = RaycastParams.new()
 	RayParams.FilterDescendantsInstances = {char}  -- Ignore the player's character in the raycast
 	RayParams.FilterType = Enum.RaycastFilterType.Exclude
-
 	local RayCast = workspace:Raycast(HRP.Position, Vector3.new(0, -500, 0), RayParams)
-
 	if RayCast then
 		local DistanceFromGround = (HRP.Position - RayCast.Position).Magnitude
 		if DistanceFromGround > 20 then
@@ -179,205 +228,14 @@ Slam.OnServerEvent:Connect(function(player)
 	end
 end)
 
--- Function to handle dash to the right
-DashRightEvent.OnServerEvent:Connect(function(player)
-	local char = player.Character -- Get the character
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") -- Get the humanoid root part
-	local anim = char.Humanoid:LoadAnimation(script.DashRight) -- Load the animation
-	if canDashD then -- Check if player can dash to the right
-		pressedDCount = pressedDCount + 1 -- Player pressed "D", so add to D Pressed
-		if pressedDCount == 2 then -- Double tapped
-			if timeBetweenDpress < 0.3 then -- Checks if player has pressed the button fast enough
-				pressedDCount = 0
-				local dust = RS:WaitForChild("Dust"):Clone()
-				dust.Parent = workspace.Debris
-				dust.Position = hrp.Position
-				dust.Orientation = hrp.Orientation
-				local tween = TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(4.909, 8.597, 8.597)}):Play()
-				anim:Play()
-				canDashD = false -- Set dash availability to false
-				hrp.CFrame = hrp.CFrame + hrp.CFrame.RightVector * 10 -- Move the player to the right using "+"
-				task.wait(cooldownD) -- Wait for cooldown duration
-				canDashD = true -- Re-enable dash after cooldown
-				repeat
-					if dust.Transparency == 1 then
-						dust:Destroy()
-					end
-					task.wait(0.1)
-				until not dust
-			else
-				pressedDCount = 1 -- Reset count to 1 since player pressed the button too slow
-			end
-		end
-	end
-	timeBetweenDpress = 0 -- Reset to 0 since the player just pressed "D"
-end)
-
--- Function to handle dash to the left
-DashLeftEvent.OnServerEvent:Connect(function(player)
-	local char = player.Character -- Get the character
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") -- Get the humanoid root part
-	local anim = char.Humanoid:LoadAnimation(script.DashLeft) -- Load the animation
-
-	if canDashA then -- Check if player can dash to the left
-		pressedACount = pressedACount + 1 -- Player pressed "A", so add to A Pressed
-		if pressedACount == 2 then -- Double tapped
-			if timeBetweenApress < 0.3 then -- Checks if player has pressed the button fast enough
-				pressedACount = 0
-				anim:Play()
-				local dust = RS:WaitForChild("Dust"):Clone()
-				dust.Parent = workspace.Debris
-				dust.Position = hrp.Position
-				local leftDirection = hrp.CFrame.LookVector * -1
-				local lookAtPosition = hrp.Position + leftDirection
-				local dustCFrame = CFrame.lookAt(dust.Position, lookAtPosition, Vector3.new(0, 1, 0))
-				dust.CFrame = dustCFrame -- Apply the calculated CFrame to the dust
-				local tween = TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(4.909, 8.597, 8.597)}):Play()
-				canDashA = false -- Set dash availability to false
-				hrp.CFrame = hrp.CFrame - hrp.CFrame.RightVector * 10 -- Move the player to the left using "-" and rightvector
-				task.wait(cooldownA) -- Wait for cooldown duration
-				canDashA = true -- Re-enable dash after cooldown
-				repeat
-					if dust.Transparency == 1 then
-						dust:Destroy()
-					end
-					task.wait(0.1)
-				until not dust
-			else
-				pressedACount = 1 -- Reset count to 1 since player pressed the button too slow
-			end
-		end
-	end
-	timeBetweenApress = 0 -- Reset to 0 since the player just pressed "A"
-end)
-
--- Function to handle dash forward
-DashForwardEvent.OnServerEvent:Connect(function(player)
-	local char = player.Character -- Get the character
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") -- Get the humanoid root part
-	local anim = char.Humanoid:LoadAnimation(script.DashForward) -- Load the animation
-	if canDashW then -- Check if player can dash forward
-		pressedWCount = pressedWCount + 1 -- Player pressed "W", so add to W Pressed
-		if pressedWCount == 2 then -- Double tapped
-			if timeBetweenWpress < 0.3 then -- Checks if player has pressed the button fast enough
-				pressedWCount = 0
-				anim:Play()
-				local dust = RS:WaitForChild("Dust"):Clone()
-				dust.Parent = workspace.Debris
-				dust.Position = hrp.Position
-				dust.CFrame = CFrame.new(dust.Position, dust.Position + (-hrp.CFrame.RightVector)) -- Face the left direction
-				local tween = TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(4.909, 8.597, 8.597)}):Play()
-				canDashW = false -- Set dash availability to false
-				hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * 10 -- Move the player forward using lookvector and "+"
-				task.wait(cooldownW) -- Wait for cooldown duration
-				canDashW = true -- Re-enable dash after cooldown
-				repeat
-					if dust.Transparency == 1 then
-						dust:Destroy()
-					end
-					task.wait(0.1)
-				until not dust
-			else
-				pressedWCount = 1 -- Reset count to 1 since player pressed the button too slow
-			end
-		end
-	end
-	timeBetweenWpress = 0 -- Reset to 0 since the player just pressed "W"
-end)
-
--- Function to handle dash backward
-DashBackwardEvent.OnServerEvent:Connect(function(player)
-	local char = player.Character -- Get the character
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") -- Get the humanoid root part
-	local anim = char.Humanoid:LoadAnimation(script.DashBackward) -- Load the animation
-	if canDashS then -- Check if player can dash backward
-		pressedSCount = pressedSCount + 1 -- Player pressed "S", so add to S Pressed
-		if pressedSCount == 2 then -- Double tapped
-			if timeBetweenSpress < 0.3 then -- Checks if player has pressed the button fast enough
-				pressedSCount = 0
-				anim:Play()
-				local dust = RS:WaitForChild("Dust"):Clone()
-				dust.Parent = workspace.Debris
-				dust.Position = hrp.Position
-				local leftDirection = hrp.CFrame.RightVector
-				local lookAtPosition = hrp.Position + leftDirection
-				local dustCFrame = CFrame.lookAt(dust.Position, lookAtPosition, Vector3.new(0, 1, 0))
-				dust.CFrame = dustCFrame -- Apply the calculated CFrame to the dust
-				local tween = TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(4.909, 8.597, 8.597)}):Play()
-				canDashS = false -- Set dash availability to false
-				hrp.CFrame = hrp.CFrame - hrp.CFrame.LookVector * 10 -- Move the player backward using lookvector and "-"
-				task.wait(cooldownS) -- Wait for cooldown duration
-				canDashS = true -- Re-enable dash after cooldown
-				repeat
-					if dust.Transparency == 1 then
-						dust:Destroy()
-					end
-					task.wait(0.1)
-				until not dust
-			else
-				pressedSCount = 1 -- Reset count to 1 since player pressed the button too slow
-			end
-		end
-	end
-	timeBetweenSpress = 0 -- Reset to 0 since the player just pressed "S"
-end)
-
--- Function to handle dash upward (new)
-DashUpwardEvent.OnServerEvent:Connect(function(player)
-	local Character = player.Character -- Get the character
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") -- Get the humanoid root part
-	local anim = Character.Humanoid:LoadAnimation(script.DashUpward) -- Load the animation
-	if canDashSpace then -- Check if player can dash upward
-		pressedSpaceCount = pressedSpaceCount + 1 -- Player pressed "E", so add to E Pressed
-		if pressedSpaceCount == 2 then -- Double tapped
-			if timeBetweenSpacepress < 0.3 then -- Checks if player has pressed the button fast enough
-				pressedSpaceCount = 0
-				anim:Play()
-				local dust = RS:WaitForChild("Dust"):Clone()
-				dust.Parent = workspace.Debris
-				dust.Position = hrp.Position
-				dust.Orientation = Vector3.new(0, 90, 90)
-				local tween = TweenService:Create(dust, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(6.957, 12.184, 12.184)}):Play()
-				canDashSpace = false -- Set dash availability to false
-				wait(0.05)
-				hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0) -- Move the player upward
-				for _, Descendant in ipairs(Character:GetDescendants()) do
-					if not (Descendant:IsA("BasePart")) then continue end
-					Descendant.AssemblyLinearVelocity = Vector3.zero
-					Descendant.AssemblyAngularVelocity = Vector3.zero
-				end
-				task.wait(cooldownSpace) -- Wait for cooldown duration
-				canDashSpace = true -- Re-enable dash after cooldown
-				repeat
-					if dust.Transparency == 1 then
-						dust:Destroy()
-					end
-					task.wait(0.1)
-				until not dust
-			else
-				pressedSpaceCount = 1 -- Reset count to 1 since player pressed the button too slow
-			end
-		end
-	end
-	timeBetweenSpacepress = 0 -- Reset to 0 since the player just pressed "E"
-end)
-
 -- Continuously track the time between presses
 while true do
-	if pressedDCount > 0 then -- Checks to see if the player has already pressed "D"
-		timeBetweenDpress = timeBetweenDpress + 0.1 -- Add to the time between presses
-	end
-	if pressedACount > 0 then -- Checks to see if the player has already pressed "A"
-		timeBetweenApress = timeBetweenApress + 0.1 -- Add to the time between presses
-	end
-	if pressedWCount > 0 then -- Checks to see if the player has already pressed "W"
-		timeBetweenWpress = timeBetweenWpress + 0.1 -- Add to the time between presses
-	end
-	if pressedSCount > 0 then -- Checks to see if the player has already pressed "S"
-		timeBetweenSpress = timeBetweenSpress + 0.1 -- Add to the time between presses
-	end
-	if pressedSpaceCount > 0 then -- Checks to see if the player has already pressed "E" 
-		timeBetweenSpacepress = timeBetweenSpacepress + 0.1 -- Add to the time between presses 
+	for key, config in pairs(DashConfig) do
+		if config.count > 0 then
+			config.timeBetweenPress = config.timeBetweenPress + 0.1
+		end
 	end
 	task.wait(0.1)
 end
+
+-- Im swowwy mr.vibe for making spaghetti code :(, I hope this is a bit better :)
